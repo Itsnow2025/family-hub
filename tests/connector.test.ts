@@ -60,16 +60,19 @@ describe("tools", () => {
     const client = await connect("phil-token");
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "add_to_list",
       "confirm_preference",
       "read_personal_file",
       "remember_preference",
       "retire_preference",
+      "show_list",
       "suggest_preference",
+      "tick_off_list",
       "update_about",
       "who_am_i",
     ]);
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
-    expect(readOnly).toEqual(["read_personal_file", "who_am_i"]);
+    expect(readOnly).toEqual(["read_personal_file", "show_list", "who_am_i"]);
   });
 
   it("says who is connected, and logs it", async () => {
@@ -193,5 +196,60 @@ describe("tools", () => {
     const refused = await call(await connect("gigi-token"), "update_about", { about: "x", person: "Phil" });
     expect(refused.isError).toBe(true);
     expect(family.about.get(PHIL.id)).toBe("Founder. Early riser.");
+  });
+});
+
+describe("shared lists", () => {
+  it("lets Ferique add to Shopping and everyone see it", async () => {
+    const ferique = await connect("ferique-token");
+    const added = await call(ferique, "add_to_list", { items: ["Milk", "eggs", "horse feed"] });
+    expect(added.text).toContain("Added to Shopping: Milk, eggs, horse feed.");
+    expect(added.text).toContain("Shopping now has 3 to get.");
+
+    const seenByGigi = await call(await connect("gigi-token"), "show_list", {});
+    expect(seenByGigi.text).toContain("Shopping, 3 to get:");
+    expect(seenByGigi.text).toContain("- Milk (Ferique)");
+  });
+
+  it("does not add the same thing twice", async () => {
+    const ferique = await connect("ferique-token");
+    await call(ferique, "add_to_list", { items: ["Milk"] });
+    const again = await call(await connect("phil-token"), "add_to_list", { items: ["milk", "bread"], list: "the shopping list" });
+    expect(again.text).toContain("Added to Shopping: bread.");
+    expect(again.text).toContain("Already on it: milk.");
+    expect(family.items).toHaveLength(2);
+  });
+
+  it("ticks things off by a loose name, and reports what it could not find", async () => {
+    const phil = await connect("phil-token");
+    await call(phil, "add_to_list", { items: ["2 litres of milk", "eggs"] });
+    const ticked = await call(phil, "tick_off_list", { items: ["milk", "caviar"] });
+    expect(ticked.text).toContain("Ticked off Shopping: 2 litres of milk.");
+    expect(ticked.text).toContain("Could not find on Shopping: caviar.");
+    expect(ticked.text).toContain("Still to get: 1.");
+    expect(family.items.find((i) => i.item === "2 litres of milk")).toMatchObject({ status: "got", doneBy: "Phil" });
+  });
+
+  it("puts back something ticked off by mistake, and removes without deleting", async () => {
+    const phil = await connect("phil-token");
+    await call(phil, "add_to_list", { items: ["eggs", "bread"] });
+    await call(phil, "tick_off_list", { items: ["eggs"] });
+    expect((await call(phil, "tick_off_list", { items: ["eggs"], action: "put_back" })).text).toContain("Put back on Shopping: eggs.");
+    await call(phil, "tick_off_list", { items: ["bread"], action: "remove" });
+    expect(family.items.map((i) => `${i.item}:${i.status}`).sort()).toEqual(["bread:removed", "eggs:needed"]);
+  });
+
+  it("starts a new family list when one is named that does not exist", async () => {
+    const gigi = await connect("gigi-token");
+    const added = await call(gigi, "add_to_list", { items: ["hoof pick"], list: "Feed store" });
+    expect(added.text).toContain("Started a new list called Feed store");
+    const shown = await call(await connect("ferique-token"), "show_list", {});
+    expect(shown.text).toContain("Other lists: Feed store (1)");
+  });
+
+  it("says which lists exist when asked for one that does not", async () => {
+    const result = await call(await connect("phil-token"), "show_list", { list: "Christmas" });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("The lists are: Shopping.");
   });
 });

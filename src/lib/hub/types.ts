@@ -49,6 +49,29 @@ export interface NewPreference {
   source: PreferenceSource;
 }
 
+export type ItemStatus = "needed" | "got" | "removed";
+
+export interface HubList {
+  id: string;
+  name: string;
+  visibility: Visibility;
+  ownerId: string;
+  needed: number;
+}
+
+export interface ListItem {
+  id: string;
+  listId: string;
+  item: string;
+  note: string | null;
+  status: ItemStatus;
+  addedBy: string | null;
+  door: Door;
+  addedAt: string;
+  doneBy: string | null;
+  doneAt: string | null;
+}
+
 // Everything the connector needs from the database. The real implementation
 // runs every call as the signed-in person; the tests use an in-memory one.
 export interface HubData {
@@ -59,6 +82,12 @@ export interface HubData {
   setPreferenceStatus(id: string, status: PreferenceStatus): Promise<Preference | null>;
   updateAbout(memberId: string, about: string | null): Promise<boolean>;
   log(entry: { action: string; subjectId?: string; targetId?: string; summary?: string }): Promise<void>;
+
+  lists(): Promise<HubList[]>;
+  listItems(listId: string, options?: { includeGot?: boolean }): Promise<ListItem[]>;
+  createList(input: { name: string; visibility: Visibility; ownerId: string }): Promise<HubList>;
+  addListItems(listId: string, addedBy: string, items: string[]): Promise<ListItem[]>;
+  setListItemStatus(ids: string[], status: ItemStatus): Promise<ListItem[]>;
 }
 
 // Who may write in whose file. The database enforces the same rule.

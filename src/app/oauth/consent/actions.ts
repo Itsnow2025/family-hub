@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { blockedByParent, findConnection, recordConnection } from "@/lib/hub/connected-ais";
+import { blockedByParent, findConnection, isAiDoor, recordConnection } from "@/lib/hub/connected-ais";
 import { requireMember } from "@/lib/session";
 
 function consentPath(id: string, error?: string): string {
@@ -30,7 +30,10 @@ export async function decide(formData: FormData): Promise<void> {
   try {
     const existing = await findConnection(supabase, me.id, client.id);
     if (blockedByParent(existing, me, await hub.members())) failed = "blocked";
-    else await recordConnection(supabase, me, client, existing);
+    else {
+      const picked = formData.get("door");
+      await recordConnection(supabase, me, client, existing, isAiDoor(picked) ? picked : undefined);
+    }
   } catch {
     failed = "failed";
   }
@@ -38,6 +41,6 @@ export async function decide(formData: FormData): Promise<void> {
 
   const { data, error } = await supabase.auth.oauth.approveAuthorization(id, { skipBrowserRedirect: true });
   if (error || !data) redirect(consentPath(id, "failed"));
-  await hub.log({ action: "ai.connected", subjectId: me.id, summary: `${me.name} connected ${client.name}` });
+  await hub.log({ action: "ai.connected", subjectId: me.id, summary: `${me.name} connected an AI` });
   redirect(data.redirect_url);
 }

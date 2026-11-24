@@ -62,6 +62,7 @@ export function Nav({ me, members, current }: { me: Member; members: Member[]; c
           Family Hub
         </Link>
         {members.map((m) => item(`/file/${m.name.toLowerCase()}`, m.id === me.id ? `${m.name} (you)` : m.name, m.id))}
+        {item("/lists", "Lists", "lists")}
         {item("/settings", "Settings", "settings")}
         <form action="/signout" method="post" className="ml-auto">
           <button className="rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface">Sign out</button>

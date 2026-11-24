@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { AUTH_ISSUER } from "@/lib/config";
 import { verifyAccessToken } from "@/lib/hub/auth";
-import { blockedByParent, doorForClient, type ConnectedAiRow } from "@/lib/hub/connected-ais";
+import { blockedByParent, displayNameForClient, doorForClient, type ConnectedAiRow } from "@/lib/hub/connected-ais";
+import { findList, matchItems } from "@/lib/hub/list-tools";
+import type { ListItem } from "@/lib/hub/types";
 import { formatFile, resolvePerson } from "@/lib/hub/tools";
 import { FAMILY, FERIQUE, GIGI, PHIL } from "./fake-hub";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -58,6 +60,25 @@ describe("people and doors", () => {
     expect(doorForClient("xAI Grok")).toBe("grok");
     expect(doorForClient("Claude")).toBe("claude");
     expect(doorForClient("ChatGPT")).toBe("other_ai");
+  });
+  it("shows Grok Bot by its own name even though it calls itself Cursor", () => {
+    expect(doorForClient("Cursor")).toBe("grok");
+    expect(displayNameForClient("Cursor", "grok")).toBe("Grok Bot");
+    expect(displayNameForClient("Cursor", "other_ai")).toBe("Cursor");
+    expect(displayNameForClient("", "claude")).toBe("Claude");
+  });
+  it("matches spoken list names and items loosely but never ambiguously", () => {
+    const lists = [
+      { id: "1", name: "Shopping", visibility: "family" as const, ownerId: "x", needed: 0 },
+      { id: "2", name: "Feed store", visibility: "family" as const, ownerId: "x", needed: 0 },
+    ];
+    expect(findList(lists, undefined)?.name).toBe("Shopping");
+    expect(findList(lists, "the feed store list")?.name).toBe("Feed store");
+    expect(findList(lists, "Christmas")).toBeUndefined();
+    const items = ["full cream milk", "almond milk", "eggs"].map((item, n) => ({ id: String(n), item }) as ListItem);
+    expect(matchItems(items, ["eggs"]).matched.map((i) => i.item)).toEqual(["eggs"]);
+    expect(matchItems(items, ["milk"]).missing).toEqual(["milk"]);
+    expect(matchItems(items, ["almond milk"]).matched.map((i) => i.item)).toEqual(["almond milk"]);
   });
   it("stops Gigi reconnecting an AI a parent switched off, but not one she switched off", () => {
     const row = { enabled: false, changed_by: PHIL.id } as ConnectedAiRow;

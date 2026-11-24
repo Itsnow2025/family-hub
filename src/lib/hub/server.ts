@@ -1,6 +1,7 @@
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { CONNECTOR_PATH } from "@/lib/config";
+import { registerListTools } from "./list-tools";
 import { registerHubTools, SERVER_INSTRUCTIONS, type DataForAuth } from "./tools";
 
 export const RESOURCE_METADATA_PATH = `/.well-known/oauth-protected-resource${CONNECTOR_PATH}`;
@@ -11,10 +12,16 @@ export function createHubHandler(deps: {
   verify: (token: string | undefined) => Promise<AuthInfo | undefined>;
   dataFor: DataForAuth;
 }): (req: Request) => Promise<Response> {
-  const mcp = createMcpHandler((server) => registerHubTools(server, deps.dataFor), {
-    serverInfo: { name: "family-hub", version: "0.1.0" },
-    instructions: SERVER_INSTRUCTIONS,
-  });
+  const mcp = createMcpHandler(
+    (server) => {
+      registerHubTools(server, deps.dataFor);
+      registerListTools(server, deps.dataFor);
+    },
+    {
+      serverInfo: { name: "family-hub", version: "0.2.0" },
+      instructions: SERVER_INSTRUCTIONS,
+    },
+  );
   return withMcpAuth(mcp, (_req, bearerToken) => deps.verify(bearerToken), {
     required: true,
     resourceMetadataPath: RESOURCE_METADATA_PATH,

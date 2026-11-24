@@ -3,10 +3,24 @@ import type { Member } from "./types";
 
 export type AiDoor = "grok" | "claude" | "other_ai";
 
+// Grok Bot introduces itself to connectors as "Cursor".
 export function doorForClient(name: string): AiDoor {
-  if (/grok|x\.?ai/i.test(name)) return "grok";
+  if (/grok|x\.?ai|cursor/i.test(name)) return "grok";
   if (/claude|anthropic/i.test(name)) return "claude";
   return "other_ai";
+}
+
+export const DOOR_NAMES: Record<AiDoor, string> = { grok: "Grok", claude: "Claude", other_ai: "Another AI" };
+
+// The name shown to the family for a connected AI.
+export function displayNameForClient(name: string, door: AiDoor): string {
+  const given = name.trim();
+  if (door === "grok" && /cursor/i.test(given)) return "Grok Bot";
+  return given || DOOR_NAMES[door];
+}
+
+export function isAiDoor(value: unknown): value is AiDoor {
+  return value === "grok" || value === "claude" || value === "other_ai";
 }
 
 export interface ConnectedAiRow {
@@ -49,9 +63,10 @@ export async function recordConnection(
   me: Member,
   client: { id: string; name: string },
   existing: ConnectedAiRow | null,
+  chosenDoor?: AiDoor,
 ): Promise<void> {
-  const door = doorForClient(client.name);
-  const name = client.name.trim() || "AI app";
+  const door = chosenDoor ?? doorForClient(client.name);
+  const name = displayNameForClient(client.name, door);
   const result = existing
     ? await supabase.from("connected_ais").update({ enabled: true, client_name: name, door }).eq("id", existing.id)
     : await supabase.from("connected_ais").insert({ member_id: me.id, client_id: client.id, client_name: name, door });

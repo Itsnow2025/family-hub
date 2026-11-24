@@ -1,6 +1,9 @@
 import type {
   ConnectionStatus,
   HubData,
+  HubList,
+  ItemStatus,
+  ListItem,
   Member,
   NewPreference,
   PersonalFile,
@@ -21,6 +24,10 @@ export class FakeFamily {
   about = new Map<string, string | null>();
   log: { actor: string; action: string; subjectId?: string }[] = [];
   aiStatus = new Map<string, ConnectionStatus["status"]>();
+  lists: Omit<HubList, "needed">[] = [
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-999999999999", name: "Shopping", visibility: "family", ownerId: FERIQUE.id },
+  ];
+  items: ListItem[] = [];
   seq = 0;
 
   viewFor(me: Member): HubData {
@@ -94,5 +101,64 @@ function viewOf(family: FakeFamily, me: Member): HubData {
       async log(entry) {
         family.log.push({ actor: me.name, action: entry.action, subjectId: entry.subjectId });
       },
+
+      async lists() {
+        return family.lists.filter(canSeeList).map((l) => ({
+          ...l,
+          needed: family.items.filter((i) => i.listId === l.id && i.status === "needed").length,
+        }));
+      },
+      async listItems(listId, options) {
+        const list = family.lists.find((l) => l.id === listId);
+        if (!list || !canSeeList(list)) return [];
+        return family.items.filter(
+          (i) => i.listId === listId && (i.status === "needed" || (options?.includeGot && i.status === "got")),
+        );
+      },
+      async createList(input) {
+        if (input.ownerId !== me.id) throw new Error("row level security refused");
+        const list = { id: `bbbbbbbb-bbbb-4bbb-8bbb-${String(++family.seq).padStart(12, "0")}`, ...input };
+        family.lists.push(list);
+        return { ...list, needed: 0 };
+      },
+      async addListItems(listId, addedBy, items) {
+        const list = family.lists.find((l) => l.id === listId);
+        if (!list || !canSeeList(list) || addedBy !== me.id) throw new Error("row level security refused");
+        const added = items.map((item): ListItem => ({
+          id: `cccccccc-cccc-4ccc-8ccc-${String(++family.seq).padStart(12, "0")}`,
+          listId,
+          item,
+          note: null,
+          status: "needed",
+          addedBy: me.name,
+          door: "grok",
+          addedAt: new Date(0).toISOString(),
+          doneBy: null,
+          doneAt: null,
+        }));
+        family.items.push(...added);
+        return added;
+      },
+      async setListItemStatus(ids: string[], status: ItemStatus) {
+        const changed = family.items.filter((i) => {
+          const list = family.lists.find((l) => l.id === i.listId);
+          return ids.includes(i.id) && list && canSeeList(list);
+        });
+        for (const item of changed) {
+          item.status = status;
+          item.doneBy = status === "needed" ? null : me.name;
+        }
+        return changed;
+      },
     };
+
+  function canSeeList(list: Omit<HubList, "needed">): boolean {
+    const owner = FAMILY.find((m) => m.id === list.ownerId)!;
+    return (
+      list.ownerId === me.id ||
+      list.visibility === "family" ||
+      (list.visibility === "parents" && me.role === "parent") ||
+      (me.role === "parent" && owner.role === "child")
+    );
+  }
 }

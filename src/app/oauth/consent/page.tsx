@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation";
-import { Button, Card, Page } from "@/components/ui";
-import { blockedByParent, findConnection } from "@/lib/hub/connected-ais";
+import { Button, Card, fieldClass, Page } from "@/components/ui";
+import {
+  blockedByParent,
+  displayNameForClient,
+  DOOR_NAMES,
+  doorForClient,
+  findConnection,
+} from "@/lib/hub/connected-ais";
 import { requireMember } from "@/lib/session";
 import { decide } from "./actions";
 
@@ -39,7 +45,9 @@ export default async function ConsentPage({
   const children = members.filter((m) => m.role === "child");
   const existing = await findConnection(supabase, me.id, data.client.id);
   const blocked = blockedByParent(existing, me, members);
-  const appName = data.client.name || "An AI app";
+  const guessedDoor = doorForClient(data.client.name);
+  const appName = displayNameForClient(data.client.name, guessedDoor);
+  const calledItself = data.client.name.trim();
   const writes =
     me.role === "parent" && children.length
       ? `Add to your own file and to ${children.map((c) => c.name).join(" and ")}'s`
@@ -72,8 +80,20 @@ export default async function ConsentPage({
           <p className="text-muted">Every action it takes is logged. You can switch it off any time in Settings.</p>
           <p className="break-all text-xs text-muted">Returns to: {data.redirect_uri}</p>
         </Card>
-        <form action={decide} className="mt-4 flex gap-2">
+        <form action={decide} className="mt-4 flex flex-wrap gap-2">
           <input type="hidden" name="authorization_id" value={data.authorization_id} />
+          {blocked ? null : (
+            <label className="mb-1 block w-full text-sm">
+              <span className="mb-1 block text-muted">
+                Which AI is this?{calledItself && calledItself !== appName ? ` It calls itself "${calledItself}".` : ""}
+              </span>
+              <select name="door" defaultValue={guessedDoor} className={fieldClass}>
+                <option value="grok">{DOOR_NAMES.grok}</option>
+                <option value="claude">{DOOR_NAMES.claude}</option>
+                <option value="other_ai">{DOOR_NAMES.other_ai}</option>
+              </select>
+            </label>
+          )}
           {blocked ? null : (
             <Button type="submit" name="decision" value="approve" className="flex-1">
               Connect as {me.name}
