@@ -58,9 +58,10 @@ export function Nav({ me, members, current }: { me: Member; members: Member[]; c
   return (
     <header className="border-b border-line">
       <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-1 px-4 py-3">
-        <Link href="/" className="mr-2 font-semibold tracking-tight">
-          Family Hub
+        <Link href="/brain" className="mr-2 font-semibold tracking-tight">
+          Family Brain
         </Link>
+        {item("/brain", "This week", "brain")}
         {members.map((m) => item(`/file/${m.name.toLowerCase()}`, m.id === me.id ? `${m.name} (you)` : m.name, m.id))}
         {item("/lists", "Lists", "lists")}
         {item("/settings", "Settings", "settings")}

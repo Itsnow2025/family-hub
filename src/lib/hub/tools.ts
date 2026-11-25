@@ -18,7 +18,7 @@ export type ToolContext = { http?: { authInfo?: AuthInfo } };
 
 export type DataForAuth = (authInfo: AuthInfo | undefined) => HubData | undefined;
 
-export const SERVER_INSTRUCTIONS = `Family Hub is the private record of one family: Phil and Ferique (parents) and Gigi (child).
+export const SERVER_INSTRUCTIONS = `Family Hub is the family's brain: the private, shared record of Phil and Ferique (parents) and Gigi (child). It exists to help their dreams and goals come true, as a team.
 You are connected as one of them, and you can only do what that person can do.
 
 Personal files hold each person's preferences.

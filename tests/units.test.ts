@@ -3,6 +3,7 @@ import { AUTH_ISSUER } from "@/lib/config";
 import { verifyAccessToken } from "@/lib/hub/auth";
 import { blockedByParent, displayNameForClient, doorForClient, type ConnectedAiRow } from "@/lib/hub/connected-ais";
 import { findList, matchItems } from "@/lib/hub/list-tools";
+import { addDays, weekStartOf, todayIn } from "@/lib/hub/week";
 import type { ListItem } from "@/lib/hub/types";
 import { formatFile, resolvePerson } from "@/lib/hub/tools";
 import { FAMILY, FERIQUE, GIGI, PHIL } from "./fake-hub";
@@ -90,5 +91,19 @@ describe("people and doors", () => {
   it("describes an empty file kindly", () => {
     expect(formatFile({ member: PHIL, about: null, preferences: [] }, PHIL)).toContain("Your file has no preferences yet.");
     expect(formatFile({ member: PHIL, about: null, preferences: [] }, GIGI)).toContain("Nothing in Phil's file is shared with you yet.");
+  });
+});
+
+describe("family weeks", () => {
+  it("starts every week on Monday", () => {
+    expect(weekStartOf("2026-11-23")).toBe("2026-11-23");
+    expect(weekStartOf("2026-11-26")).toBe("2026-11-23");
+    expect(weekStartOf("2026-11-29")).toBe("2026-11-23");
+    expect(weekStartOf("2026-11-30")).toBe("2026-11-30");
+    expect(addDays("2026-12-28", 7)).toBe("2027-01-04");
+  });
+  it("knows today in Sydney, not on the server's clock", () => {
+    // 2pm UTC on 24 Nov is 1am on 25 Nov in Sydney (daylight saving).
+    expect(todayIn("Australia/Sydney", new Date("2026-11-24T14:00:00Z"))).toBe("2026-11-25");
   });
 });

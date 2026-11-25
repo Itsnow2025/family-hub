@@ -1,5 +1,7 @@
 import type {
   ConnectionStatus,
+  Entry,
+  Goal,
   HubData,
   HubList,
   ItemStatus,
@@ -9,6 +11,7 @@ import type {
   PersonalFile,
   Preference,
   PreferenceStatus,
+  Review,
 } from "@/lib/hub/types";
 import { canWriteFile } from "@/lib/hub/types";
 
@@ -28,7 +31,14 @@ export class FakeFamily {
     { id: "bbbbbbbb-bbbb-4bbb-8bbb-999999999999", name: "Shopping", visibility: "family", ownerId: FERIQUE.id },
   ];
   items: ListItem[] = [];
+  goals: Omit<Goal, "lead" | "team">[] = [];
+  entries: (Omit<Entry, "who" | "thanksTo" | "addedBy"> & { thanksToId: string | null; addedById: string; withdrawn: boolean })[] = [];
+  reviews: (Omit<Review, "who"> & { superseded: boolean })[] = [];
   seq = 0;
+
+  nextId(prefix: string): string {
+    return `${prefix}-${prefix}-4${prefix.slice(0, 3)}-8${prefix.slice(0, 3)}-${String(++this.seq).padStart(12, "0")}`;
+  }
 
   viewFor(me: Member): HubData {
     return viewOf(this, me);
@@ -150,7 +160,134 @@ function viewOf(family: FakeFamily, me: Member): HubData {
         }
         return changed;
       },
+
+      async goals(options) {
+        return family.goals
+          .filter((g) => canSeeGoal(g) && (options?.includeClosed || g.status === "active" || g.status === "paused"))
+          .map(goalOut);
+      },
+      async addGoal(input) {
+        const lead = FAMILY.find((m) => m.id === input.leadId)!;
+        if (input.createdBy !== me.id || !canWriteFile(me, lead)) throw new Error("row level security refused");
+        const goal = {
+          id: family.nextId("dddddddd"),
+          title: input.title,
+          why: input.why ?? null,
+          kind: input.kind ?? "goal",
+          parentId: input.parentId ?? null,
+          measure: input.measure ?? null,
+          targetDate: input.targetDate ?? null,
+          status: "active" as const,
+          visibility: input.visibility ?? "family",
+          leadId: input.leadId,
+          teamIds: (input.teamIds ?? []).filter((id) => id !== input.leadId),
+        };
+        family.goals.push(goal);
+        return goalOut(goal);
+      },
+      async updateGoal(id, patch) {
+        const goal = family.goals.find((g) => g.id === id);
+        if (!goal || !canEditGoal(goal)) return null;
+        for (const [k, v] of Object.entries(patch)) if (v !== undefined) (goal as Record<string, unknown>)[k] = v;
+        return goalOut(goal);
+      },
+      async addGoalPeople(goalId, memberIds) {
+        const goal = family.goals.find((g) => g.id === goalId);
+        if (!goal || !canEditGoal(goal)) throw new Error("row level security refused");
+        for (const id of memberIds) if (id !== goal.leadId && !goal.teamIds.includes(id)) goal.teamIds.push(id);
+      },
+      async entries(range) {
+        return family.entries
+          .filter((e) => !e.withdrawn && e.happenedOn >= range.from && e.happenedOn <= range.to && canSeeOwned(e.memberId, e.visibility))
+          .map((e) => ({ ...e, who: nameOf(e.memberId)!, thanksTo: nameOf(e.thanksToId), addedBy: nameOf(e.addedById) }));
+      },
+      async addEntry(input) {
+        const owner = FAMILY.find((m) => m.id === input.memberId)!;
+        if (input.addedBy !== me.id || !canWriteFile(me, owner)) throw new Error("row level security refused");
+        const visibility = input.visibility ?? (input.kind === "health" ? "parents" : "family");
+        if (visibility === "private" && owner.role === "child") throw new Error("child journals have no private entries");
+        const entry = {
+          id: family.nextId("eeeeeeee"),
+          memberId: input.memberId,
+          kind: input.kind,
+          body: input.body,
+          goalId: input.goalId ?? null,
+          thanksToId: input.thanksToId ?? null,
+          tool: input.tool ?? null,
+          happenedOn: input.happenedOn ?? "2026-11-24",
+          visibility,
+          door: "grok" as const,
+          addedById: me.id,
+          createdAt: new Date(0).toISOString(),
+          withdrawn: false,
+        };
+        family.entries.push(entry);
+        return { ...entry, who: owner.name, thanksTo: nameOf(entry.thanksToId), addedBy: me.name };
+      },
+      async withdrawEntry(id) {
+        const entry = family.entries.find((e) => e.id === id);
+        if (!entry || !canWriteFile(me, FAMILY.find((m) => m.id === entry.memberId)!)) return false;
+        entry.withdrawn = true;
+        return true;
+      },
+      async reviews(weekStart) {
+        return family.reviews
+          .filter((r) => !r.superseded && r.weekStart === weekStart && canSeeOwned(r.memberId, "family"))
+          .map((r) => ({ ...r, who: nameOf(r.memberId)! }));
+      },
+      async saveReview(input) {
+        const owner = FAMILY.find((m) => m.id === input.memberId)!;
+        if (input.addedBy !== me.id || !canWriteFile(me, owner)) throw new Error("row level security refused");
+        for (const r of family.reviews) if (r.memberId === input.memberId && r.weekStart === input.weekStart) r.superseded = true;
+        const review = {
+          id: family.nextId("ffffffff"),
+          weekStart: input.weekStart,
+          memberId: input.memberId,
+          body: input.body,
+          aiSkill: input.aiSkill ?? null,
+          nextTry: input.nextTry ?? null,
+          door: "grok" as const,
+          createdAt: new Date(0).toISOString(),
+          superseded: false,
+        };
+        family.reviews.push(review);
+        return { ...review, who: owner.name };
+      },
     };
+
+  function nameOf(id: string | null): string | null {
+    return id ? (FAMILY.find((m) => m.id === id)?.name ?? null) : null;
+  }
+
+  function canSeeGoal(g: Omit<Goal, "lead" | "team">): boolean {
+    const lead = FAMILY.find((m) => m.id === g.leadId)!;
+    return (
+      g.leadId === me.id ||
+      g.visibility === "family" ||
+      (g.visibility === "parents" && me.role === "parent") ||
+      (me.role === "parent" && lead.role === "child") ||
+      g.teamIds.includes(me.id)
+    );
+  }
+
+  function canEditGoal(g: Omit<Goal, "lead" | "team">): boolean {
+    const lead = FAMILY.find((m) => m.id === g.leadId)!;
+    return g.leadId === me.id || (me.role === "parent" && lead.role === "child") || g.teamIds.includes(me.id);
+  }
+
+  function goalOut(g: Omit<Goal, "lead" | "team">): Goal {
+    return { ...g, lead: nameOf(g.leadId)!, team: g.teamIds.map((id) => nameOf(id)!) };
+  }
+
+  function canSeeOwned(ownerId: string, visibility: string): boolean {
+    const owner = FAMILY.find((m) => m.id === ownerId)!;
+    return (
+      ownerId === me.id ||
+      (me.role === "parent" && owner.role === "child") ||
+      visibility === "family" ||
+      (visibility === "parents" && me.role === "parent")
+    );
+  }
 
   function canSeeList(list: Omit<HubList, "needed">): boolean {
     const owner = FAMILY.find((m) => m.id === list.ownerId)!;
